@@ -10,16 +10,16 @@ import (
 
 func main() {
 	conn, err := internal.ConnectRabbitMQ("guest", "guest", "localhost:5672", "customers")
-
 	if err != nil {
 		panic(err)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
+
 	client, err := internal.NewRabbitMQClient(conn)
 	if err != nil {
 		panic(err)
 	}
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	// CreateQueuesAndBindings(client)
 
