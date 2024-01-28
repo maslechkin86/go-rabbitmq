@@ -53,6 +53,12 @@ func main() {
 	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
 
+	maxMessagesCount := 10
+	maxBytesSize := 0
+	if err := client.ApplyQos(maxMessagesCount, maxBytesSize, true); err != nil {
+		panic(err)
+	}
+
 	g, ctx := errgroup.WithContext(ctx)
 	g.SetLimit(10)
 	go func() {
