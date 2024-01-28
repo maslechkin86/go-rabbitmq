@@ -21,25 +21,6 @@ func main() {
 	}
 	defer func() { _ = client.Close() }()
 
-	// CreateQueuesAndBindings(client)
-
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	for i := 0; i < 10; i++ {
-		if err := client.SendAndWait(ctx, "customer_events", "customers.created.us", amqp.Publishing{
-			ContentType:  "text/plain",
-			DeliveryMode: amqp.Persistent,
-			Body:         []byte(`A ne message`),
-		}); err != nil {
-			panic(err)
-		}
-	}
-
-	log.Println(client)
-}
-
-func CreateQueuesAndBindings(client internal.RabbitClient) {
 	if _, err := client.CreateQueue("customers_created", true, false); err != nil {
 		panic(err)
 	}
@@ -54,4 +35,23 @@ func CreateQueuesAndBindings(client internal.RabbitClient) {
 		panic(err)
 	}
 
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	if err := client.Send(ctx, "customer_events", "customers.created.se", amqp.Publishing{
+		ContentType:  "text/plain",
+		DeliveryMode: amqp.Persistent, // This tells rabbitMQ that this message should be Saved if no resources accepts it before a restart (durable)
+		Body:         []byte("An cool message between services"),
+	}); err != nil {
+		panic(err)
+	}
+	if err := client.Send(ctx, "customer_events", "customers.test", amqp.Publishing{
+		ContentType:  "text/plain",
+		DeliveryMode: amqp.Transient, // This tells rabbitMQ that this message can be deleted if no resources accepts it before a restart (non durable)
+		Body:         []byte("A second cool message"),
+	}); err != nil {
+		panic(err)
+	}
+
+	log.Println(client)
 }

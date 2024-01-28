@@ -22,18 +22,6 @@ func main() {
 	}
 	defer func() { _ = client.Close() }()
 
-	publishConn, err := internal.ConnectRabbitMQ("guest", "guest", "localhost:5672", "customers")
-	if err != nil {
-		panic(err)
-	}
-	defer func() { _ = publishConn.Close() }()
-
-	publishClient, err := internal.NewRabbitMQClient(publishConn)
-	if err != nil {
-		panic(err)
-	}
-	defer func() { _ = publishClient.Close() }()
-
 	queue, err := client.CreateQueue("", true, true)
 	if err != nil {
 		panic(err)
@@ -48,40 +36,18 @@ func main() {
 		panic(err)
 	}
 
-	// Set a timeout for 15 secs
-	ctx := context.Background()
-	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
-	defer cancel()
-
-	maxMessagesCount := 10
-	maxBytesSize := 0
-	if err := client.ApplyQos(maxMessagesCount, maxBytesSize, true); err != nil {
-		panic(err)
-	}
-
-	g, ctx := errgroup.WithContext(ctx)
-	g.SetLimit(10)
 	go func() {
 		for message := range messageBus {
-			msg := message
-			g.Go(func() error {
-				log.Printf("New message: %v\n", message)
-				time.Sleep(10 * time.Second)
-				if err := msg.Ack(false); err != nil {
-					log.Println("Acknowledge message failed")
-					return err
-				}
-				if err := publishClient.SendAndWait(ctx, "customer_callbacks", msg.ReplyTo, amqp091.Publishing{
-					ContentType:   "text/plain",
-					DeliveryMode:  amqp091.Persistent,
-					Body:          []byte("RPC Complete"),
-					CorrelationId: msg.CorrelationId,
-				}); err != nil {
-					panic(err)
-				}
-				log.Printf("Acknowledge message %s\n", message.MessageId)
-				return nil
-			})
+			log.Printf("New message: %v\n", message)
+			if !message.Redelivered {
+				message.Nack(false, true)
+				continue
+			}
+			if err := message.Ack(false); err != nil {
+				log.Println("Acknowledge message failed")
+				continue
+			}
+			log.Printf("Acknowledge message %s\n", message.MessageId)
 		}
 	}()
 
