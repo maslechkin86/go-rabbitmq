@@ -11,25 +11,47 @@ import (
 
 func main() {
 	conn, err := internal.ConnectRabbitMQ("guest", "guest", "localhost:5672", "customers")
-
 	if err != nil {
 		panic(err)
 	}
 	defer func() { _ = conn.Close() }()
+
 	client, err := internal.NewRabbitMQClient(conn)
 	if err != nil {
 		panic(err)
 	}
 	defer func() { _ = client.Close() }()
 
-	messageBus, err := client.Consume("customers_created", "email-service", false)
+	queue, err := client.CreateQueue("", true, true)
+	if err != nil {
+		panic(err)
+	}
+
+	if err = client.CreateBinding(queue.Name, "", "customer_events"); err != nil {
+		panic(err)
+	}
+
+	messageBus, err := client.Consume(queue.Name, "email-service", false)
 	if err != nil {
 		panic(err)
 	}
 
 	var blocking chan struct{}
 
-	ConsumeMessagesConcurrently(messageBus)
+	go func() {
+		for message := range messageBus {
+			log.Printf("New message: %v\n", message)
+			if !message.Redelivered {
+				message.Nack(false, true)
+				continue
+			}
+			if err := message.Ack(false); err != nil {
+				log.Println("Acknowledge message failed")
+				continue
+			}
+			log.Printf("Acknowledge message %s\n", message.MessageId)
+		}
+	}()
 
 	log.Println("Consuming, to close the program press CTRL+C")
 
